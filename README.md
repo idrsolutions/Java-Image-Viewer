@@ -1,6 +1,6 @@
 # Java-Image-Viewer
 
-This is simple java image viewer that has 2 implementations:
+This is a simple Java image viewer that has 2 implementations:
 
 - ImageIO 
   - For you to view images using Java with ImageIO
