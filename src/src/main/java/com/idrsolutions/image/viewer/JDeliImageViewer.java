@@ -18,20 +18,64 @@ import com.idrsolutions.image.tiff.TiffDecoder;
 import org.jpedal.utils.LogWriter;
 
 import javax.imageio.stream.FileImageInputStream;
-import javax.swing.*;
+import javax.swing.JScrollPane;
+import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JColorChooser;
+import javax.swing.JComboBox;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JPopupMenu;
+import javax.swing.JTabbedPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import java.awt.*;
-import java.awt.event.*;
+import java.awt.AlphaComposite;
+import java.awt.BasicStroke;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.FileDialog;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
+import java.awt.GridBagConstraints;
+import java.awt.GridLayout;
+import java.awt.GridBagLayout;
+import java.awt.Point;
+import java.awt.Polygon;
+import java.awt.Rectangle;
+import java.awt.Shape;
+import java.awt.Stroke;
+import java.awt.event.ActionEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
+import java.awt.event.ItemEvent;
+import java.awt.event.ItemListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Line2D;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
+import java.util.Arrays;
+import java.util.TreeMap;
+import java.util.HashMap;
+import java.util.Objects;
 import java.util.List;
-import java.util.*;
 import java.util.stream.IntStream;
 
 public final class JDeliImageViewer extends JavaImageViewer implements ItemListener {
@@ -89,10 +133,10 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     @Override
     BufferedImage getImage() {
         try {
-        if (isMulti) {
-            final TiffDecoder tiff = new TiffDecoder();
-            return tiff.readImageAt(currIm, file);
-        }
+            if (isMulti) {
+                final TiffDecoder tiff = new TiffDecoder();
+                return tiff.readImageAt(currIm, file);
+            }
             return tmp == null ? JDeli.read(file) : JDeli.read(tmp);
         } catch (final Exception e) {
             LogWriter.writeLog("Unable to read file: " + e.getMessage());
@@ -434,7 +478,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                 } else {
                     temp = file;
                 }
-                    image = JDeli.read(temp);
+                image = JDeli.read(temp);
                 cropLabel.imops.undo().undo();
                 tmp = cropLabel.applyCrop(temp);
             } catch (final Exception ex) {
@@ -713,7 +757,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         protected ImageProcessingOperations imops;
 
         public CroppingLabel(final JDeliImageViewer v) {
-        crop(v);
+            crop(v);
         }
 
         protected void crop(final JDeliImageViewer viewer) {
@@ -1045,25 +1089,25 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                 } else if (getImageType().equals(ImageFormat.TIFF_IMAGE.toString())) {
                     exif = Exif.readExif(data);
                 }
-                    if (exif != null && !exif.getIfdDataList().isEmpty()) {
-                        final List<IFDData> exifList = exif.getIfdDataList();
-                        String remainingexif = exifList.get(0).toString();
-                        int p = 0;
-                        while (p < remainingexif.length() && remainingexif.contains("\n")) {
-                            if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
-                                metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
-                            }
-                            p = remainingexif.indexOf('\n') + 1;
-                            remainingexif = remainingexif.substring(p);
-
+                if (exif != null && !exif.getIfdDataList().isEmpty()) {
+                    final List<IFDData> exifList = exif.getIfdDataList();
+                    String remainingexif = exifList.get(0).toString();
+                    int p = 0;
+                    while (p < remainingexif.length() && remainingexif.contains("\n")) {
+                        if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
+                            metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
                         }
-                    }
+                        p = remainingexif.indexOf('\n') + 1;
+                        remainingexif = remainingexif.substring(p);
 
-                    metadataMap.forEach((k, v) -> {
-                        final JTextField text = new JTextField("   " + k + " : " + v);
-                        text.setEditable(false);
-                        infoPanel.add(text);
-                    });
+                    }
+                }
+
+                metadataMap.forEach((k, v) -> {
+                    final JTextField text = new JTextField("   " + k + " : " + v);
+                    text.setEditable(false);
+                    infoPanel.add(text);
+                });
 
             } catch (final Exception e) {
                 throw new RuntimeException(e);
@@ -1073,7 +1117,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             info.setLocation(300, 250);
             info.setSize(450, 500);
         }
-            info.setVisible(true);
+        info.setVisible(true);
     }
 
     @SuppressWarnings({"OverlyLongMethod", "ConstantConditions", "java:S138"})

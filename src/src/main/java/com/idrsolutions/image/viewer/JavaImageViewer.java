@@ -4,10 +4,26 @@
 
 package com.idrsolutions.image.viewer;
 
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.BoxLayout;
+import javax.swing.ImageIcon;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
+import javax.swing.UIManager;
+import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
@@ -69,7 +85,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
     }
 
     JavaImageViewer(final String title) {
-        viewerTitle = title;
+        viewerTitle = title + "   -   Version: " + VERSION;
         setPreferredSize(new Dimension(frameWidth, frameHeight));
     }
 
@@ -220,7 +236,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         }
 
         final JFrame propertiesWindow = new JFrame("Document Properties");
-        propertiesWindow.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        propertiesWindow.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         propertiesWindow.setSize(400, 300);
         propertiesWindow.setLocationRelativeTo(null);
         propertiesWindow.setVisible(true);
@@ -232,8 +248,8 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         final Dimension panelDimensions = new Dimension(200, 250);
         propertiesPanel.setPreferredSize(panelDimensions);
         propertiesPanel.setMaximumSize(panelDimensions);
-        propertiesPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        propertiesPanel.setAlignmentY(Component.CENTER_ALIGNMENT);
+        propertiesPanel.setAlignmentX(CENTER_ALIGNMENT);
+        propertiesPanel.setAlignmentY(CENTER_ALIGNMENT);
         propertiesPanel.setLayout(new GridLayout(3, 0));
 
 
@@ -246,7 +262,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         final JLabel heightData = new JLabel("Height: " + h);
         final JLabel typeData = new JLabel("Type: " + type);
 
-        typeData.setAlignmentX(Component.CENTER_ALIGNMENT);
+        typeData.setAlignmentX(CENTER_ALIGNMENT);
 
         propertiesPanel.add(typeData);
         propertiesPanel.add(widthData);
@@ -266,28 +282,114 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         System.exit(0);
     }
 
-    private static void displayAbout() {
+    @SuppressWarnings({"OverlyLongMethod", "java:S138"})
+    void displayAbout() {
         final JFrame aboutWindow = new JFrame("About");
-        aboutWindow.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
-        aboutWindow.setSize(400, 300);
+        aboutWindow.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        aboutWindow.setSize(450, 400);
         aboutWindow.setLocationRelativeTo(null);
         aboutWindow.setVisible(true);
-        aboutWindow.getContentPane().setLayout(new BoxLayout(aboutWindow.getContentPane(), BoxLayout.Y_AXIS));
 
         final JPanel aboutPanel = new JPanel();
-        aboutWindow.getContentPane().add(aboutPanel);
+        aboutPanel.setBackground(new Color(84, 130, 31));
+        aboutPanel.setForeground(Color.WHITE);
 
-        final Dimension panelDimensions = new Dimension(200, 250);
+        final Dimension panelDimensions = new Dimension(450, 400);
         aboutPanel.setPreferredSize(panelDimensions);
         aboutPanel.setMaximumSize(panelDimensions);
-        aboutPanel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        aboutPanel.setAlignmentY(Component.CENTER_ALIGNMENT);
-        aboutPanel.setLayout(new GridLayout(3, 0));
+        aboutPanel.setAlignmentX(CENTER_ALIGNMENT);
+        aboutPanel.setAlignmentY(CENTER_ALIGNMENT);
+        final GridBagLayout gl = new GridBagLayout();
+        final GridBagConstraints constraints = new GridBagConstraints();
 
-        final JLabel versionLabel = new JLabel("Version: " + VERSION);
+        final JLabel title = new JLabel(viewerTitle.substring(0, viewerTitle.lastIndexOf('-')));
+        title.setFont(new Font("SansSerif", Font.BOLD, 14));
+        title.setHorizontalAlignment(SwingConstants.CENTER);
+        title.setForeground(Color.WHITE);
 
-        aboutPanel.add(versionLabel);
+        final JLabel versionsHeaderLabel = new JLabel(" -Version- ");
+        versionsHeaderLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
+        versionsHeaderLabel.setForeground(Color.WHITE);
+        versionsHeaderLabel.setLayout(gl);
+        versionsHeaderLabel.setBorder(new EmptyBorder(20, 0, 0, 0));
 
+        final JLabel jdeliLabel = new JLabel("JDeli: " + VERSION);
+        final JLabel javaLabel = new JLabel("Java: " + System.getProperty("java.version"));
+        jdeliLabel.setLayout(gl);
+        javaLabel.setLayout(gl);
+        javaLabel.setForeground(Color.WHITE);
+        jdeliLabel.setForeground(Color.WHITE);
+        jdeliLabel.setBorder(new EmptyBorder(0, 0, 15, 0));
+        javaLabel.setBorder(new EmptyBorder(0, 0, 50, 0));
+
+        final JTextArea aboutUsSection = new JTextArea("Our Java swing Image Viewer is split for JDeli and ImageIO so no matter how you use JDeli, you can view your images.");
+        aboutUsSection.setOpaque(false);
+        aboutUsSection.setLineWrap(true);
+        aboutUsSection.setBounds(aboutUsSection.getX(), aboutUsSection.getY(), 400, 20);
+        aboutUsSection.setWrapStyleWord(true);
+        aboutUsSection.setEditable(false);
+        aboutUsSection.setForeground(Color.WHITE);
+
+        final JLabel url = new JLabel("<html><center>Take me to JDeli");
+        url.setForeground(Color.blue);
+        url.setHorizontalAlignment(SwingConstants.CENTER);
+        url.setAlignmentX(CENTER_ALIGNMENT);
+
+        //Create cursor control
+        url.addMouseListener(new MouseAdapter() {
+
+            @Override
+            public void mouseEntered(final MouseEvent e) {
+                aboutPanel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+                url.setText("<html><center><a href='https://www.idrsolutions.com/jdeli/'>Take me to JDeli</a></center>");
+            }
+
+            @Override
+            public void mouseExited(final MouseEvent e) {
+                aboutPanel.setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
+                url.setText("<html><center>Take me to JDeli");
+            }
+
+            @Override
+            public void mouseClicked(final MouseEvent e) {
+                try {
+                    java.awt.Desktop.getDesktop().browse(new URI("https://www.idrsolutions.com/jdeli/"));
+                } catch (final Exception e1) {
+                    System.err.println("Exception attempting launch browser: " + e1);
+                }
+            }
+        });
+        aboutPanel.setLayout(gl);
+        gl.setConstraints(aboutPanel, constraints);
+        constraints.weightx = 1.0;
+        constraints.weighty = 1.0;
+        constraints.gridheight = 1;
+        constraints.fill = GridBagConstraints.NONE;
+        constraints.gridwidth = 2;
+        constraints.gridx = 0;
+        constraints.gridy = 0;
+        aboutPanel.add(title, constraints);
+        constraints.gridheight = 1;
+        constraints.gridx = 1;
+        constraints.gridy = 1;
+        aboutPanel.add(versionsHeaderLabel, constraints);
+        constraints.weighty = 0;
+        constraints.gridx = 1;
+        constraints.gridy = 2;
+        aboutPanel.add(jdeliLabel, constraints);
+        constraints.gridx = 1;
+        constraints.gridy = 3;
+        aboutPanel.add(javaLabel, constraints);
+        constraints.weighty = 1.0;
+        constraints.gridwidth = 2;
+        constraints.gridx = 0;
+        constraints.gridy = 4;
+        aboutPanel.add(aboutUsSection, constraints);
+        constraints.gridx = 0;
+        constraints.gridy = 5;
+        aboutPanel.add(url, constraints);
+        aboutWindow.getContentPane().add(aboutPanel);
+        aboutPanel.paint(aboutPanel.getGraphics());
     }
 
     private static void openWebsite(final String url) {
