@@ -15,10 +15,11 @@ import com.idrsolutions.image.process.ImageProcessingOperations;
 import com.idrsolutions.image.process.MirrorOperations;
 import com.idrsolutions.image.process.Watermark;
 import com.idrsolutions.image.tiff.TiffDecoder;
+import javax.swing.JSpinner;
+import javax.swing.SpinnerNumberModel;
 import org.jpedal.utils.LogWriter;
 
 import javax.imageio.stream.FileImageInputStream;
-import javax.swing.JScrollPane;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
@@ -31,51 +32,40 @@ import javax.swing.JMenu;
 import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JPopupMenu;
+import javax.swing.JScrollPane;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.AlphaComposite;
-import java.awt.BasicStroke;
 import java.awt.BorderLayout;
 import java.awt.Color;
-import java.awt.Component;
-import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FileDialog;
 import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.GridBagConstraints;
-import java.awt.GridLayout;
 import java.awt.GridBagLayout;
-import java.awt.Point;
+import java.awt.GridLayout;
 import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.Shape;
-import java.awt.Stroke;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.ItemEvent;
 import java.awt.event.ItemListener;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
-import java.awt.geom.Arc2D;
-import java.awt.geom.Line2D;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.util.Arrays;
-import java.util.TreeMap;
 import java.util.HashMap;
-import java.util.Objects;
 import java.util.List;
+import java.util.Objects;
+import java.util.TreeMap;
 import java.util.stream.IntStream;
 
 public final class JDeliImageViewer extends JavaImageViewer implements ItemListener {
@@ -91,29 +81,18 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     private JMenu processOptions;
     private JButton blur, brighten, crop, darken, edgeDetection, emboss, gaussianBlur, invertColors, mirrorV, mirrorH, sharpen, stretch, watermark, reset, undo, redo;
     private JButton toARGB, toBinary, toGrayscale, toIndexed, toRGB;
-    private double zoom;
     private double scale;
     private static BufferedImage image;
-    private ImageProcessingOperations operations;
-    private CroppingLabel cropLabel;
-
-    private ClippingLabel clippingLabel;
-
-    private Dimension imageLabelSize;
 
     public Metadata metadata;
     private JFrame info;
-    private int cropOpIndex;
-    private int clipOpIndex;
 
-    private File tmp;
     private boolean isMulti;
     private int imageCount;
     private int currIm;
 
     private JDeliImageViewer() {
         super("JDeli Viewer");
-        operations = new ImageProcessingOperations();
         imageCount = 1;
         currIm = 0;
     }
@@ -126,30 +105,32 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                 viewer.setAndDisplayFile(new File(args[0]));
             }
         } catch (final Exception e) {
-            LogWriter.writeLog(e);
+            LogWriter.error(e, "Exception thrown starting the JDeliImageViewer");
         }
     }
 
     @Override
-    BufferedImage getImage() {
+    BufferedImage getImage(final ImageTab tab) {
+        final File file = tab.getFile();
+        final File tmp = tab.getTmp();
         try {
-            if (isMulti) {
-                final TiffDecoder tiff = new TiffDecoder();
-                return tiff.readImageAt(currIm, file);
-            }
+        if (isMulti) {
+            final TiffDecoder tiff = new TiffDecoder();
+            return tiff.readImageAt(currIm, file);
+        }
             return tmp == null ? JDeli.read(file) : JDeli.read(tmp);
         } catch (final Exception e) {
             LogWriter.writeLog("Unable to read file: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "Unable to read file: " + file.getName());
-            file = null;
         }
         return null;
     }
 
     @Override
-    protected Rectangle getImageDimension() {
+    protected Rectangle getImageDimension(final ImageTab tab) {
         try {
-            return JDeli.readDimension(tmp == null ? file : tmp);
+            final File tmp = tab.getTmp();
+            return JDeli.readDimension(tmp == null ? tab.getFile() : tmp);
         } catch (final Exception e) {
             LogWriter.writeLog("Unable to read file for dimensions: " + e.getMessage());
             return new Rectangle(0, 0);
@@ -157,9 +138,9 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     }
 
     @Override
-    protected String getImageType() {
+    protected String getImageType(final ImageTab tab) {
         try {
-            metadata = JDeli.getImageInfo(tmp == null ? file : tmp);
+            metadata = tab.getMetadata() == null ? JDeli.getImageInfo(tab.getFile()) : tab.getMetadata();
         } catch (final Exception e) {
             LogWriter.writeLog("Unable to get image type: " + e.getMessage());
             return "N/A";
@@ -168,29 +149,61 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     }
 
     @Override
-    void displayImage() {
+    void setAndDisplayFile(final File file) {
+        final ImageTab tab = new ImageTab(file, new JLabel(), new ImageProcessingOperations());
+        tabs.add(tab);
+        if (canConvert(tab)) {
+            displayImage(tab);
+        }
+    }
+
+    @Override
+    void displayImage(final ImageTab tab) {
+        final JLabel imageLabel = tab.getImageLabel();
+        final JPanel tabPanel = new JPanel();
+        final JScrollPane scrollPane = new JScrollPane(imageLabel);
+        scrollPane.setSize(600, 600);
+        final JButton close = new JButton(new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/viewer/cross.png"))));
+        close.setBorderPainted(false);
+        final JLabel tabLabel = new JLabel(tab.getFile().getName());
+        tabPanel.setBackground(Color.white);
+        tabPanel.setBounds(new Rectangle(tabLabel.getWidth() + 2, tabLabel.getHeight() + 2));
+        tabPanel.add(tabLabel);
+        tabPanel.add(close);
+        tabPanel.setLayout(new BoxLayout(tabPanel, BoxLayout.X_AXIS));
+        imageTabs.add(scrollPane);
+        imageTabs.setTabComponentAt(tabs.size() - 1, tabPanel);
+        close.addActionListener(e -> {
+            final int i = imageTabs.indexOfTabComponent(tabPanel);
+            final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Image?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
+            if (saveOnClose == JOptionPane.YES_OPTION) {
+                    saveFile(tab);
+            }
+            imageTabs.remove(i);
+            tabs.remove(i);
+        });
+
         try {
-            if ("tif".equals(getExtension()) || "tiff".equals(getExtension())) {
+            if ("tif".equals(getExtension(tab)) || "tiff".equals(getExtension(tab))) {
                 final TiffDecoder tiff = new TiffDecoder();
-                imageCount = tiff.getImageCount(file);
+                imageCount = tiff.getImageCount(tab.getFile());
                 isMulti = imageCount > 1;
                 if (isMulti) {
-                   setUpMulti();
+                   setUpMulti(tab);
                 }
             }
         } catch (final IOException e) {
-            LogWriter.writeLog(e);
+            LogWriter.error(e, "Exception thrown reading tiff image");
         }
-        resetImage();
-        draw();
+        resetImage(tab);
+        draw(tab);
         resetScale();
         reset();
 
-        imageLabelSize = new Dimension(imageLabel.getWidth(), imageLabel.getHeight());
         enableMenus(true);
     }
 
-    private void setUpMulti() {
+    private void setUpMulti(final ImageTab tab) {
         final JButton next = new JButton(new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/viewer/next.gif"))));
         final JButton prev = new JButton(new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/viewer/prev.gif"))));
         final JComboBox<Integer> img = new JComboBox<>(IntStream.iterate(0, x -> x + 1).limit(imageCount).boxed().toArray(Integer[]::new));
@@ -198,7 +211,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         next.addActionListener(a -> {
             if (currIm < imageCount - 1) {
                 currIm++;
-                draw();
+                draw(tab);
                 img.setSelectedIndex(currIm);
             }
         });
@@ -206,14 +219,14 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         prev.addActionListener(a -> {
             if (currIm > 0) {
                 currIm--;
-                draw();
+                draw(tab);
                 img.setSelectedIndex(currIm);
             }
         });
         img.addItemListener(i -> {
             if (i.getStateChange() == ItemEvent.SELECTED) {
                 currIm = img.getSelectedIndex();
-                draw();
+                draw(tab);
             }
         });
 
@@ -231,7 +244,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         final JScrollPane sp = new JScrollPane(thumbnails);
         for (int i = 0; i < imageCount; i++) {
             currIm = i;
-            BufferedImage im = getImage();
+            BufferedImage im = getImage(tab);
             final ImageProcessingOperations imops = new ImageProcessingOperations();
             imops.thumbnail(100, 100);
             im = imops.apply(im);
@@ -245,8 +258,8 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         pack();
     }
 
-    void resetImage() {
-        image = Objects.requireNonNull(getImage());
+    void resetImage(final ImageTab tab) {
+        image = Objects.requireNonNull(getImage(tab));
     }
 
     void resetScale() {
@@ -341,20 +354,25 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                         windowWidth = frameWidth - 20;
                         windowHeight = frameHeight - 100;
                         resetScale();
-                        draw();
+                        draw(tabs.get(imageTabs.getSelectedIndex()));
                     }
                 }
             }
         });
 
+        imageTabs.addChangeListener(l -> {
+            if (imageTabs.getSelectedIndex() >= 0) {
+                final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+                zoomCombo.setSelectedIndex(tab.getZoomIndex());
+            }
+        });
     }
 
     @Override
-    void draw() {
-        BufferedImage im = Objects.requireNonNull(getImage());
-
+    void draw(final ImageTab tab) {
+        BufferedImage im = Objects.requireNonNull(getImage(tab));
         final ImageProcessingOperations zoomOps = new ImageProcessingOperations();
-        switch (zoomCombo.getSelectedIndex()) {
+        switch (tab.getZoomIndex()) {
             case 0 :
                 zoomOps.resizeToFit(windowWidth, windowHeight);
                 break;
@@ -365,13 +383,16 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                 zoomOps.resizeToWidth(windowWidth);
                 break;
             default :
-                zoomOps.scale(zoom);
+                zoomOps.scale(tab.getZoom());
                 break;
         }
 
+        if (tab.getOperations() == null) {
+            tab.setOperations(new ImageProcessingOperations());
+        }
         im = zoomOps.apply(im);
-        image = operations.apply(im);
-        imageLabel.setIcon(new ImageIcon(image));
+        image = tab.getOperations().apply(im);
+        tab.getImageLabel().setIcon(new ImageIcon(image));
     }
 
     void enableMenus(final boolean status) {
@@ -387,8 +408,13 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         zoomOut.setEnabled(status);
     }
 
+    private JLabel getCurrentImageLabel() {
+        return tabs.get(imageTabs.getSelectedIndex()).getImageLabel();
+    }
+
     @Override
     public void actionPerformed(final ActionEvent e) {
+        final int index = imageTabs.getSelectedIndex();
         final Object source = e.getSource();
         if (source == zoomIn) {
             actionZoomIn();
@@ -400,87 +426,93 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             actonRotateAntiClockwise();
         } else if (source == undo) {
            actionUndo();
-            draw();
+            draw(tabs.get(index));
         } else if (source == redo) {
             actionRedo();
-            draw();
+            draw(tabs.get(index));
         } else if (source == metadataMenu) {
-            showImageInfo();
+            showImageInfo(tabs.get(index));
         } else if (source == blur) {
-            operations.blur();
-            draw();
+            tabs.get(index).getOperations().blur();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == brighten) {
-            operations.brighten(10);
-            draw();
+            tabs.get(index).getOperations().brighten(10);
+            draw(tabs.get(index));
         } else if (source == crop) {
             zoomCombo.setSelectedIndex(0);
             processOptions.setSelected(false);
             processOptions.setPopupMenuVisible(false);
             actionCrop();
         } else if (source == darken) {
-            operations.brighten(-10);
-            draw();
+            tabs.get(index).getOperations().brighten(-10);
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == edgeDetection) {
-            operations.edgeDetection();
-            draw();
+            tabs.get(index).getOperations().edgeDetection();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == emboss) {
-            operations.emboss();
-            draw();
+            tabs.get(index).getOperations().emboss();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == gaussianBlur) {
-            operations.gaussianBlur();
-            draw();
+            tabs.get(index).getOperations().gaussianBlur();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == invertColors) {
-            operations.invertColors();
-            draw();
+            tabs.get(index).getOperations().invertColors();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == mirrorH) {
-            operations.mirror(MirrorOperations.HORIZONTAL);
-            draw();
+            tabs.get(index).getOperations().mirror(MirrorOperations.HORIZONTAL);
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == mirrorV) {
-            operations.mirror(MirrorOperations.VERTICAL);
-            draw();
+            tabs.get(index).getOperations().mirror(MirrorOperations.VERTICAL);
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == sharpen) {
-            operations.sharpen();
-            draw();
+            tabs.get(index).getOperations().sharpen();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == stretch) {
-            operations.stretchToFill(windowWidth, windowHeight);
-            draw();
+            tabs.get(index).getOperations().stretchToFill(windowWidth, windowHeight);
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == toARGB) {
-            operations.toARGB();
-            draw();
+            tabs.get(index).getOperations().toARGB();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == toBinary) {
-            operations.toBinary();
-            draw();
+            tabs.get(index).getOperations().toBinary();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == toGrayscale) {
-            operations.toGrayscale();
-            draw();
+            tabs.get(index).getOperations().toGrayscale();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == toIndexed) {
-            operations.toIndexed();
-            draw();
+            tabs.get(index).getOperations().toIndexed();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == toRGB) {
-            operations.toRGB();
-            draw();
+            tabs.get(index).getOperations().toRGB();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else if (source == watermark) {
             watermarkPopup();
         } else if (source == reset) {
             reset();
-            draw();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else {
             super.actionPerformed(e);
         }
     }
 
     private void actionUndo() {
+        final int index = imageTabs.getSelectedIndex();
+        final ImageTab tab = tabs.get(index);
+        final File file = tab.getFile();
+        int cropOpIndex = tab.getCropOpIndex();
+        int clipOpIndex = tab.getClipOpIndex();
         if (cropOpIndex == 5) {
             try {
                 final File temp;
                 if (clipOpIndex == 6) {
-                    temp = tmp;
+                    temp = tab.getTmp();
                 } else {
                     temp = file;
                 }
+                final CroppingLabel cropLabel = tab.getCroppingLabel();
                 image = JDeli.read(temp);
                 cropLabel.imops.undo().undo();
-                tmp = cropLabel.applyCrop(temp);
+                tab.setTmp(cropLabel.applyCrop(temp, image));
             } catch (final Exception ex) {
                 throw new RuntimeException(ex);
             }
@@ -489,28 +521,37 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
 
         } else if (clipOpIndex == 5) {
             try {
+                final ClippingLabel clippingLabel = tab.getClippingLabel();
                 image = JDeli.read(file);
                 clippingLabel.imops.undo().undo();
-                tmp = clippingLabel.applyClip(file);
+                tab.setTmp(clippingLabel.applyClip(file, image));
             } catch (final Exception ex) {
                 throw new RuntimeException(ex);
             }
             clipOpIndex--;
             cropOpIndex = cropOpIndex != -1 ? cropOpIndex - 1 : -1;
         } else {
-            if (operations.operationsListSize() != 0) {
-                operations.undo();
+            if (tab.getOperations().operationsListSize() != 0) {
+                tab.getOperations().undo();
                 cropOpIndex = cropOpIndex > 0 ? cropOpIndex - 1 : -1;
                 clipOpIndex = clipOpIndex > 0 ? clipOpIndex - 1 : -1;
             }
         }
+        tab.setCropOpIndex(cropOpIndex);
+        tab.setClipOpIndex(clipOpIndex);
     }
 
     private void actionRedo() {
+        final int index = imageTabs.getSelectedIndex();
+        final ImageTab tab = tabs.get(index);
+        final File file = tab.getFile();
+        int cropOpIndex = tab.getCropOpIndex();
+        int clipOpIndex = tab.getClipOpIndex();
         if (cropOpIndex == 4) {
             try {
+                final CroppingLabel cropLabel = tab.getCroppingLabel();
                 cropLabel.imops.redo().redo();
-                tmp = cropLabel.applyCrop(file);
+                tab.setTmp(cropLabel.applyCrop(file, image));
             } catch (final Exception ex) {
                 throw new RuntimeException(ex);
             }
@@ -518,8 +559,9 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             clipOpIndex = clipOpIndex > 0 ? clipOpIndex + 1 : -1;
         } else if (clipOpIndex == 4) {
             try {
+                final ClippingLabel clippingLabel = tab .getClippingLabel();
                 clippingLabel.imops.redo().redo();
-                tmp = clippingLabel.applyClip(file);
+                tab.setTmp(clippingLabel.applyClip(file, image));
             } catch (final Exception ex) {
                 throw new RuntimeException(ex);
             }
@@ -528,18 +570,24 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         } else {
             cropOpIndex = cropOpIndex > 0 ? cropOpIndex + 1 : -1;
             clipOpIndex = clipOpIndex > 0 ? clipOpIndex + 1 : -1;
-            operations.redo();
+            tab.getOperations().redo();
         }
+        tab.setClipOpIndex(clipOpIndex);
+        tab.setCropOpIndex(cropOpIndex);
     }
 
     private void actionClip(final ClippingLabel.shape clipShape) {
         int topX = 0;
         int topY = 0;
-
+        final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+        draw(tab);
+        final Dimension imageLabelSize = tab.getImageLabel().getSize();
+        ClippingLabel clippingLabel = tab.getClippingLabel();
         if (clippingLabel == null) {
-            clippingLabel = new ClippingLabel(this, clipShape);
+            clippingLabel = new ClippingLabel(this, clipShape, tab, image);
+            tab.setClippingLabel(clippingLabel);
         } else {
-            clippingLabel.clip(this, clipShape);
+            clippingLabel.clip(this, clipShape, tab, image);
         }
         if (image.getWidth() < imageLabelSize.getWidth()) {
             topX = (int) ((imageLabelSize.getWidth() / 2) - (image.getWidth() / 2.0));
@@ -548,332 +596,24 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             topY = (int) ((imageLabelSize.getHeight() / 2) - (image.getHeight() / 2.0));
         }
         clippingLabel.setBounds(topX, topY, (image.getWidth()), (image.getHeight()));
-        imageLabel.add(clippingLabel);
-        clipOpIndex = 5;
-        cropOpIndex = cropOpIndex == 5 ? cropOpIndex + 1 : cropOpIndex;
-    }
-
-    static class ClippingLabel extends JLabel {
-        private enum shape {
-            RECTANGLE, CIRCLE, POLYGON
-        }
-
-        private Shape clipShape;
-        private final Shape[] polyLines;
-        private final Point[] points;
-        private int pointsNum;
-        protected ImageProcessingOperations imops;
-
-        public ClippingLabel(final JDeliImageViewer v, final shape s) {
-            points = new Point[20];
-            pointsNum = 0;
-            polyLines = new Shape[18];
-            clip(v, s);
-        }
-
-        protected void clip(final JDeliImageViewer v, final shape s) {
-            setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-
-            final boolean[] drawing = {false};
-            final boolean[] clipSelected = {true};
-
-            final MouseAdapter ma = new MouseAdapter() {
-
-                @Override
-                public void mouseMoved(final MouseEvent e) {
-                    if (clipSelected[0]) {
-                        if (e.getX() < 0 || e.getY() < 0 || e.getX() > e.getComponent().getWidth() || e.getY() > e.getComponent().getHeight()) {
-                            setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-
-                        } else if (drawing[0]) {
-                            setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-                            clipShape = updateShape(s, new Point(e.getX(), e.getY()), false, false);
-                            repaint();
-                        } else {
-                            setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-                        }
-                    }
-                }
-            };
-            addMouseListener(new MouseAdapter() {
-
-                @Override
-                public void mouseClicked(final MouseEvent e) {
-                    if (clipSelected[0]) {
-                        if (e.getX() > 0 && e.getY() > 0) {
-                            if (e.getButton() == MouseEvent.BUTTON1 && !e.isControlDown()) {
-
-                                clipShape = updateShape(s, new Point(e.getX(), e.getY()), !drawing[0], false);
-                                if (s == shape.POLYGON) {
-                                    if (drawing[0]) {
-                                        points[pointsNum] = new Point(e.getX(), e.getY());
-                                        pointsNum++;
-                                    }
-                                    if (pointsNum > 1) {
-                                        polyLines[pointsNum - 2] = new Line2D.Double(points[pointsNum - 2], points[pointsNum - 1]);
-                                        if (pointsNum == 18) {
-                                            JOptionPane.showMessageDialog(e.getComponent(), "Polygon sides limit reached");
-                                        }
-                                        repaint();
-                                    }
-                                }
-                                drawing[0] = true;
-                            } else if (e.getButton() == MouseEvent.BUTTON3 || (e.isControlDown() && e.getButton() == MouseEvent.BUTTON1)) {
-                                drawing[0] = false;
-                                removeMouseListener(ma);
-                                clipSelected[0] = false;
-                                final JPopupMenu popup = new JPopupMenu();
-                                final JButton clipToShape = new JButton("Clip to shape");
-                                clipToShape.addActionListener(ev -> {
-                                    if (v.tmp == null) {
-                                        v.tmp = clipImage(v.file, s, new Point(e.getX(), e.getY()), true);
-                                    } else {
-                                        v.tmp = clipImage(v.tmp, s, new Point(e.getX(), e.getY()), true);
-                                    }
-                                    v.draw();
-                                    setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-                                    popup.setVisible(false);
-                                    removeMouseListener(this);
-                                    v.imageLabel.remove(v.clippingLabel);
-                                });
-                                popup.add(clipToShape);
-                                popup.addSeparator();
-                                final JButton clipShape = new JButton("Clip shape");
-                                clipShape.addActionListener(ev -> {
-                                    if (v.tmp == null) {
-                                        v.tmp = clipImage(v.file, s, new Point(e.getX(), e.getY()), false);
-                                    } else {
-                                        v.tmp = clipImage(v.tmp, s, new Point(e.getX(), e.getY()), false);
-                                    }
-                                    v.draw();
-                                    popup.setVisible(false);
-                                    setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-                                    removeMouseListener(this);
-                                    v.imageLabel.remove(v.clippingLabel);
-                                });
-                                popup.add(clipShape);
-                                popup.addSeparator();
-                                final JButton cancel = new JButton("Cancel");
-                                cancel.addActionListener(ev -> {
-                                    setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-                                    popup.setVisible(false);
-                                    removeMouseListener(this);
-                                    v.draw();
-                                    v.imageLabel.remove(v.clippingLabel);
-
-                                });
-                                popup.add(cancel);
-                                popup.addSeparator();
-                                v.clippingLabel.setComponentPopupMenu(popup);
-                                popup.show((Component) e.getSource(), e.getX(), e.getY());
-                            } else {
-                                v.clippingLabel.remove(0);
-                            }
-                        } else {
-                            JOptionPane.showMessageDialog(e.getComponent(), "Please select on the image");
-                        }
-                    }
-                }
-            });
-            addMouseMotionListener(ma);
-        }
-
-        @Override
-        protected void paintComponent(final Graphics g) {
-            super.paintComponent(g);
-
-            if (clipShape != null) {
-                final Graphics2D g2d = (Graphics2D) g;
-                g2d.setColor(Color.BLACK);
-                final Stroke dashedStroke = new BasicStroke(2.5F, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 1.5F, new float[]{6F, 6F}, 0F);
-                g2d.fill(dashedStroke.createStrokedShape(clipShape));
-            }
-            if (polyLines != null && pointsNum > 1) {
-                for (int i = 0; i < pointsNum - 1; i++) {
-                    final Graphics2D g2d = (Graphics2D) g;
-                    g2d.setColor(Color.BLACK);
-                    final Stroke dashedStroke = new BasicStroke(2.5F, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 1.5F, new float[]{6F, 6F}, 0F);
-                    g2d.fill(dashedStroke.createStrokedShape(polyLines[i]));
-                }
-            }
-        }
-
-        private Shape updateShape(final shape s, final Point p, final boolean starting, final boolean finishing) {
-
-            if (starting) {
-                points[0] = p;
-                pointsNum++;
-            } else {
-                if (pointsNum >= 1) {
-                    final Point start = points[0];
-
-                    switch (s) {
-                        case RECTANGLE:
-                            return new Rectangle(start.x, start.y, p.x - start.x, p.y - start.y);
-                        case CIRCLE:
-                            return new Arc2D.Double(new Rectangle(start.x, start.y, (p.x - start.x), (p.y - start.y)), 0, 360, Arc2D.PIE);
-                        case POLYGON:
-                            if (finishing) {
-                                final int[] x = new int[pointsNum];
-                                final int[] y = new int[pointsNum];
-                                for (int f = 0; f < pointsNum; f++) {
-                                    x[f] = (int) points[f].getX();
-                                    y[f] = (int) points[f].getY();
-                                }
-
-                                return new Polygon(x, y, pointsNum);
-                            }
-                            return new Line2D.Double(points[pointsNum - 1].x, points[pointsNum - 1].y, p.x, p.y);
-                    }
-                }
-            }
-            return null;
-        }
-
-        private File clipImage(final File file, final shape s, final Point p, final boolean clipToShape) {
-            imops = new ImageProcessingOperations();
-            imops.clip(updateShape(s, p, false, true), clipToShape);
-            return applyClip(file);
-        }
-
-        protected File applyClip(final File file) {
-            final String format = file.getName().substring(file.getName().lastIndexOf('.') + 1);
-            final File tmp;
-            try {
-                tmp = File.createTempFile("tmp", '.' + format);
-                image = imops.apply(image);
-                JDeli.write(image, format, tmp);
-            } catch (final Exception ex) {
-                throw new RuntimeException(ex);
-            }
-
-            return tmp;
-        }
-
-    }
-
-    static class CroppingLabel extends JLabel {
-        private Rectangle rec;
-        protected ImageProcessingOperations imops;
-
-        public CroppingLabel(final JDeliImageViewer v) {
-            crop(v);
-        }
-
-        protected void crop(final JDeliImageViewer viewer) {
-            setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-            final Point[] start = {null};
-            final Dimension[] d = {null};
-            final boolean[] cropSelected = {true};
-
-            final MouseAdapter ma = new MouseAdapter() {
-                @Override
-                public void mouseDragged(final MouseEvent e) {
-                    if (cropSelected[0] && start[0] != null) {
-                        rec.setBounds(start[0].x, start[0].y, e.getX() - start[0].x, e.getY() - start[0].y);
-                        repaint();
-                    }
-                }
-
-                @Override
-                public void mouseMoved(final MouseEvent e) {
-                    if (cropSelected[0]) {
-                        if (e.getX() < 0 || e.getY() < 0 || e.getX() > e.getComponent().getWidth() || e.getY() > e.getComponent().getHeight()) {
-                            setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-                        } else {
-                            setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
-                        }
-                    }
-                }
-            };
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mousePressed(final MouseEvent e) {
-                    if (cropSelected[0] && start[0] == null) {
-                        if (e.getX() > 0 && e.getY() > 0) {
-                            start[0] = new Point(e.getX(), e.getY());
-                        } else {
-                            JOptionPane.showMessageDialog(e.getComponent(), "Please select on the image");
-                        }
-                        rec = new Rectangle();
-                    }
-                }
-
-                @Override
-                public void mouseReleased(final MouseEvent e) {
-                    if (rec.width != 0 || rec.height != 0) {
-                        final int x, y;
-                        final Rectangle r = viewer.getImageDimension();
-                        final int imageh = image.getHeight();
-                        final int imagew = image.getWidth();
-
-                        if (cropSelected[0] && d[0] == null && start[0] != null) {
-                            if (e.getX() > e.getComponent().getWidth() || e.getY() > e.getComponent().getHeight()) {
-                                JOptionPane.showMessageDialog(e.getComponent(), "Please select on the image");
-                                getGraphics().clearRect(rec.x, rec.y, rec.width, rec.height);
-                            } else {
-                                x = start[0].x;
-                                y = start[0].y;
-                                d[0] = new Dimension(e.getX() - x, e.getY() - y);
-                                rec = null;
-                                cropSelected[0] = false;
-                                imops = new ImageProcessingOperations();
-                                imops = imops.crop(new Rectangle(new Point(x, y), d[0]));
-                                try {
-
-                                    final double imh = ((d[0].height / (float) imageh) * r.height) / d[0].height;
-                                    final double imw = ((d[0].width / (float) imagew) * r.width) / d[0].width;
-                                    imops = imops.scale(Math.max(imh, imw));
-                                    if (viewer.tmp == null) {
-                                        viewer.tmp = applyCrop(viewer.file);
-                                    } else {
-                                        viewer.tmp = applyCrop(viewer.tmp);
-                                    }
-                                } catch (final Exception ex) {
-                                    throw new RuntimeException(ex);
-                                }
-
-                                viewer.draw();
-                            }
-                        }
-                    }
-                    setCursor(new Cursor(Cursor.DEFAULT_CURSOR));
-                    removeMouseListener(this);
-                    removeMouseListener(ma);
-                    viewer.imageLabel.remove(viewer.cropLabel);
-                }
-            });
-            addMouseMotionListener(ma);
-        }
-
-        protected File applyCrop(final File prevFile) throws Exception {
-            final String format = prevFile.getName().substring(prevFile.getName().lastIndexOf('.') + 1);
-            final File newFile = File.createTempFile("tmp", '.' + format);
-            image = imops.apply(image);
-            JDeli.write(image, format, newFile);
-            return newFile;
-        }
-
-        @Override
-        protected void paintComponent(final Graphics g) {
-            super.paintComponent(g);
-
-            if (rec != null) {
-                final Graphics2D g2d = (Graphics2D) g;
-                g2d.setColor(Color.BLACK);
-                final Stroke dashedStroke = new BasicStroke(2.5F, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 1.5F, new float[]{6F, 6F}, 0F);
-                g2d.fill(dashedStroke.createStrokedShape(rec));
-            }
-        }
+        getCurrentImageLabel().add(clippingLabel);
+         tab.setClipOpIndex(5);
+         final int cropOpIndex = tab.getCropOpIndex();
+        tab.setCropOpIndex(cropOpIndex == 5 ? cropOpIndex + 1 : cropOpIndex);
     }
 
     private void actionCrop() {
         int topX = 0;
         int topY = 0;
+        final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+        draw(tab);
+        final Dimension imageLabelSize = tab.getImageLabel().getSize();
+        CroppingLabel cropLabel = tab.getCroppingLabel();
         if (cropLabel == null) {
-            cropLabel = new CroppingLabel(this);
+            cropLabel = new CroppingLabel(this, tab, image);
+            tab.setCroppingLabel(cropLabel);
         } else {
-            cropLabel.crop(this);
+            cropLabel.crop(this, tab, image);
         }
         if (image.getWidth() < imageLabelSize.getWidth()) {
             topX = (int) ((imageLabelSize.getWidth() / 2) - (image.getWidth() / 2.0));
@@ -881,18 +621,19 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             topY = (int) ((imageLabelSize.getHeight() / 2) - (image.getHeight() / 2.0));
         }
         cropLabel.setBounds(topX, topY, (image.getWidth()), (image.getHeight()));
-        imageLabel.add(cropLabel);
-        cropOpIndex = 5;
-        clipOpIndex = clipOpIndex == 5 ? clipOpIndex + 1 : clipOpIndex;
+        getCurrentImageLabel().add(cropLabel);
+        tab.setCropOpIndex(5);
+        final int clipOpIndex = tab.getClipOpIndex();
+        tab.setClipOpIndex(clipOpIndex == 5 ? clipOpIndex + 1 : clipOpIndex);
     }
 
     private void actonRotateAntiClockwise() {
         if (image != null) {
-            operations.rotate(270);
+            tabs.get(imageTabs.getSelectedIndex()).getOperations().rotate(270);
             final int temp = windowWidth;
             windowWidth = windowHeight;
             windowHeight = temp;
-            draw();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else {
             JOptionPane.showMessageDialog(this, "No Image to rotate");
         }
@@ -900,18 +641,19 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
 
     private void actionRotateClockwise() {
         if (image != null) {
-            operations.rotate(90);
+            tabs.get(imageTabs.getSelectedIndex()).getOperations().rotate(90);
             final int temp = windowWidth;
             windowWidth = windowHeight;
             windowHeight = temp;
-            draw();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         } else {
             JOptionPane.showMessageDialog(this, "No Image to rotate");
         }
     }
 
     private void actionZoomOut() {
-        if (image != null) {
+        if (imageTabs.getSelectedIndex() != -1) {
+            final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
             final int selectedIndex = zoomCombo.getSelectedIndex();
             if (selectedIndex < 3) {
                 final double s = (Math.round(scale * 10) * 10);
@@ -922,11 +664,12 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
 
                     zoomCombo.setSelectedIndex(zoomCombo.getSelectedIndex() - 1);
                 }
+                tab.setZoomIndex(selectedIndex);
             } else if (selectedIndex > 3 && selectedIndex < zoomCombo.getItemCount() - 3) {
                 zoomCombo.setSelectedIndex(selectedIndex - 1);
-                zoom = parseZoomCombo();
+                tab.setZoom(parseZoomCombo());
             }
-            draw();
+            draw(tab);
         } else {
             JOptionPane.showMessageDialog(this, noZoomMessage);
         }
@@ -934,6 +677,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
 
     private void actionZoomIn() {
         if (image != null) {
+            final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
             final int selectedIndex = zoomCombo.getSelectedIndex();
             if (selectedIndex < zoomCombo.getItemCount() - 1) {
                 if (selectedIndex < 3) {
@@ -945,12 +689,13 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                     if ((s / 100) < scale) {
                         zoomCombo.setSelectedIndex(zoomCombo.getSelectedIndex() + 1);
                     }
+                    tab.setZoomIndex(selectedIndex);
                 } else {
                     zoomCombo.setSelectedIndex(selectedIndex + 1);
-                    zoom = parseZoomCombo();
+                    tab.setZoom(parseZoomCombo());
                 }
             }
-            draw();
+            draw(tab);
         } else {
             JOptionPane.showMessageDialog(this, noZoomMessage);
 
@@ -961,10 +706,12 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     public void itemStateChanged(final ItemEvent e) {
         if (e.getSource() == zoomCombo && e.getStateChange() == ItemEvent.SELECTED) {
             if (image != null) {
+                final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+                tab.setZoomIndex(zoomCombo.getSelectedIndex());
                 if (zoomCombo.getSelectedIndex() > 3) {
-                    zoom = parseZoomCombo();
+                    tab.setZoom(parseZoomCombo());
                 }
-                draw();
+                draw(tab);
             } else {
                 zoomCombo.removeItemListener(this);
                 JOptionPane.showMessageDialog(this, noZoomMessage);
@@ -1062,52 +809,53 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             processOptions.setPopupMenuVisible(false);
         });
         clip.add(polygon);
-        cropOpIndex = -1;
-        clipOpIndex = -1;
     }
 
-    void showImageInfo() {
-        if (info == null) {
+    void showImageInfo(final ImageTab tab) {
             info = new JFrame("Image Info");
             final JPanel infoPanel = new JPanel();
             infoPanel.setLayout(new GridLayout(22, 2, 1, 1));
             Exif exif = null;
-            try (FileImageInputStream fios = new FileImageInputStream(tmp == null ? file : tmp)) {
+            try (FileImageInputStream fios = new FileImageInputStream(tab.getTmp() == null ? tab.getFile() : tab.getTmp())) {
                 final byte[] data = new byte[(int) fios.length()];
                 fios.read(data);
-                metadata = JDeli.getImageInfo(data);
+                if (tab.getMetadata() == null) {
+                    tab.setMetadata(JDeli.getImageInfo(data));
+                }
+                metadata = tab.getMetadata();
+
                 final TreeMap<String, String> metadataMap = (TreeMap<String, String>) metadata.toMap();
-                if (getImageType().equals(ImageFormat.HEIC_IMAGE.toString())) {
+                if (getImageType(tab).equals(ImageFormat.HEIC_IMAGE.toString())) {
                     final HeicDecoder hdec = new HeicDecoder();
                     exif = hdec.readExif(data);
-                } else if (getImageType().equals(ImageFormat.JPEG_IMAGE.toString())) {
+                } else if (getImageType(tab).equals(ImageFormat.JPEG_IMAGE.toString())) {
                     if (data[0] == 'E' && data[1] == 'x' && data[2] == 'i' && data[3] == 'f') {
                         final byte[] edata = new byte[data.length - 6];
                         System.arraycopy(data, 6, edata, 0, edata.length);
                         exif = Exif.readExif(edata);
                     }
-                } else if (getImageType().equals(ImageFormat.TIFF_IMAGE.toString())) {
+                } else if (getImageType(tab).equals(ImageFormat.TIFF_IMAGE.toString())) {
                     exif = Exif.readExif(data);
                 }
-                if (exif != null && !exif.getIfdDataList().isEmpty()) {
-                    final List<IFDData> exifList = exif.getIfdDataList();
-                    String remainingexif = exifList.get(0).toString();
-                    int p = 0;
-                    while (p < remainingexif.length() && remainingexif.contains("\n")) {
-                        if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
-                            metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
+                    if (exif != null && !exif.getIfdDataList().isEmpty()) {
+                        final List<IFDData> exifList = exif.getIfdDataList();
+                        String remainingexif = exifList.get(0).toString();
+                        int p = 0;
+                        while (p < remainingexif.length() && remainingexif.contains("\n")) {
+                            if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
+                                metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
+                            }
+                            p = remainingexif.indexOf('\n') + 1;
+                            remainingexif = remainingexif.substring(p);
+
                         }
-                        p = remainingexif.indexOf('\n') + 1;
-                        remainingexif = remainingexif.substring(p);
-
                     }
-                }
 
-                metadataMap.forEach((k, v) -> {
-                    final JTextField text = new JTextField("   " + k + " : " + v);
-                    text.setEditable(false);
-                    infoPanel.add(text);
-                });
+                    metadataMap.forEach((k, v) -> {
+                        final JTextField text = new JTextField("   " + k + " : " + v);
+                        text.setEditable(false);
+                        infoPanel.add(text);
+                    });
 
             } catch (final Exception e) {
                 throw new RuntimeException(e);
@@ -1116,8 +864,8 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             info.add(infoPanel);
             info.setLocation(300, 250);
             info.setSize(450, 500);
-        }
-        info.setVisible(true);
+
+            info.setVisible(true);
     }
 
     @SuppressWarnings({"OverlyLongMethod", "ConstantConditions", "java:S138"})
@@ -1126,11 +874,11 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         final JPanel popup = new JPanel();
         popup.setLayout(new BoxLayout(popup, BoxLayout.Y_AXIS));
         final JTabbedPane tabsPane = new JTabbedPane();
-        tabsPane.setPreferredSize(new Dimension(450, 550));
+        tabsPane.setPreferredSize(new Dimension(460, 550));
 
         //  text watermark
         final JPanel textPanel = new JPanel();
-        textPanel.setPreferredSize(new Dimension(400, 500));
+        textPanel.setPreferredSize(new Dimension(450, 540));
         textPanel.setLayout(new GridBagLayout());
         final GridBagConstraints c = new GridBagConstraints();
         c.fill = GridBagConstraints.HORIZONTAL;
@@ -1150,35 +898,103 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         final JComboBox<String> fontStyle = new JComboBox<>(new String[]{"Plain", "Bold", "Italic"});
         final JLabel tPosLabel = new JLabel("Text position : ");
         final JComboBox<Watermark.WatermarkPosition> tPos = new JComboBox<>(Watermark.WatermarkPosition.values());
+        final JLabel rectCoordsLabel = new JLabel("Coordinates Rectangle :");
+        final JLabel xLabel = new JLabel("X");
+        final JLabel yLabel = new JLabel("Y");
+        final JLabel wLabel = new JLabel("Width");
+        final JLabel hLabel = new JLabel("Height");
+        final JSpinner spinnerX = new JSpinner(new SpinnerNumberModel());
+        spinnerX.setPreferredSize(new Dimension(50, 30));
+        final JSpinner spinnerY = new JSpinner(new SpinnerNumberModel());
+        spinnerY.setPreferredSize(new Dimension(50, 30));
+        final JSpinner spinnerW = new JSpinner(new SpinnerNumberModel());
+        spinnerW.setPreferredSize(new Dimension(50, 30));
+        final JSpinner spinnerH = new JSpinner(new SpinnerNumberModel());
+        spinnerH.setPreferredSize(new Dimension(50, 30));
 
         // text panel layout
+        c.gridwidth = 2;
         textPanel.add(textLabel, c);
-        c.gridx++;
+        c.gridx += 2;
+        c.gridwidth = 2;
+        text.setLineWrap(true);
         textPanel.add(text, c);
-        c.gridx += 1;
+        c.gridwidth = 3;
+        c.gridx += 2;
         textPanel.add(tPosLabel, c);
-        c.gridx++;
+        c.gridwidth = 3;
+        c.gridx += 3;
         textPanel.add(tPos, c);
-        c.gridy++;
+        final JPanel rect = new JPanel();
+        rect.setLayout(new GridBagLayout());
+        rect.setPreferredSize(new Dimension(450, 30));
+        rect.setMinimumSize(new Dimension(400, 30));
+        tPos.addActionListener(a -> {
+            if (tPos.getSelectedIndex() == 2) {
+
+                c.gridy = 1;
+                c.gridwidth = 12;
+                c.gridx = 0;
+                final GridBagConstraints g = new GridBagConstraints();
+                g.gridx = 0;
+                g.gridwidth = 2;
+                g.weightx = 1;
+                rect.add(rectCoordsLabel, g);
+                g.gridwidth = 2;
+                g.weightx = 0.1;
+                g.gridx += 2;
+                rect.add(xLabel, g);
+                g.gridx += 2;
+                rect.add(spinnerX, g);
+                g.gridx += 2;
+                rect.add(yLabel, g);
+                g.gridx += 2;
+                rect.add(spinnerY, g);
+                g.gridx += 2;
+                rect.add(wLabel, g);
+                g.gridx += 2;
+                rect.add(spinnerW, g);
+                g.gridx += 2;
+                rect.add(hLabel, g);
+                g.gridx += 2;
+                rect.add(spinnerH, g);
+
+                textPanel.add(rect, c);
+            } else {
+                if (Arrays.asList(textPanel.getComponents()).contains(rect)) {
+                    textPanel.remove(rect);
+                }
+            }
+            textPanel.updateUI();
+        });
+        c.gridy = 2;
         c.gridx = 0;
         textPanel.add(tColorLabel, c);
-        c.gridy++;
-        c.gridwidth = 4;
+        c.gridy = 3;
+        c.gridwidth = 10;
         textPanel.add(tColor, c);
-        c.gridwidth = 1;
-        c.gridy++;
+        c.gridwidth = 2;
+        c.gridy = 4;
         textPanel.add(fontLabel, c);
-        c.gridx++;
+        c.weightx = 0.5;
+        c.gridwidth = 2;
+        c.gridx += 2;
         textPanel.add(font, c);
-        c.gridx++;
+        c.gridwidth = 2;
+        c.gridx += 2;
         textPanel.add(fontSizeLabel, c);
-        c.gridx++;
+        c.weightx = 0.5;
+        c.gridwidth = 2;
+        c.gridx += 2;
         textPanel.add(fontSize, c);
         c.gridx = 0;
-        c.gridy++;
-        c.weightx = 0.5;
+        c.gridy = 5;
+        c.gridwidth = 2;
+        c.weightx = 1;
         textPanel.add(fontStyleLabel, c);
-        c.gridx++;
+        c.weightx = 0.5;
+        c.gridwidth = 2;
+        c.gridx += 3;
         textPanel.add(fontStyle, c);
 
         //  shape watermark
@@ -1287,19 +1103,25 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         popup.add(tabsPane);
         final JButton applyWatermark = new JButton("Apply");
         applyWatermark.addActionListener(e -> {
+            final int index = imageTabs.getSelectedIndex();
             if (tabsPane.getSelectedComponent() == textPanel) {
                 final Font f = new Font((String) font.getSelectedItem(), fontStyle.getSelectedIndex(), (Integer) fontSize.getSelectedItem());
-                operations.watermark(text.getText(), tColor.getColor(), f, (Watermark.WatermarkPosition) tPos.getSelectedItem());
+                if (tPos.getSelectedIndex() == 2 && spinnerX.getValue() != null && spinnerY.getValue() != null && spinnerW.getValue() != null && spinnerH.getValue() != null) {
+                    tabs.get(index).getOperations().watermark(text.getText(), tColor.getColor(), f, (Watermark.WatermarkPosition) tPos.getSelectedItem(), new Rectangle((int) spinnerX.getValue(), (int) spinnerY.getValue(), (int) spinnerW.getValue(), (int) spinnerH.getValue()));
+                } else {
+                    tabs.get(index).getOperations().watermark(text.getText(), tColor.getColor(), f, (Watermark.WatermarkPosition) tPos.getSelectedItem());
+
+                }
             } else if (tabsPane.getSelectedComponent() == shapePanel) {
-                operations.watermark(shapeHashMap.get(shape.getSelectedItem()), sColor.getColor(), (Watermark.WatermarkPosition) sPos.getSelectedItem(), alphaHashMap.get(alpha.getSelectedItem()), (Watermark.WatermarkShapeProperties) properties.getSelectedItem());
+                tabs.get(index).getOperations().watermark(shapeHashMap.get(shape.getSelectedItem()), sColor.getColor(), (Watermark.WatermarkPosition) sPos.getSelectedItem(), alphaHashMap.get(alpha.getSelectedItem()), (Watermark.WatermarkShapeProperties) properties.getSelectedItem());
             } else if (tabsPane.getSelectedComponent() == imagePanel) {
                 try {
-                    operations.watermark(JDeli.read(new File(filename[0])), (Watermark.WatermarkPosition) imPos.getSelectedItem(), alphaHashMap.get(imAlpha.getSelectedItem()));
+                    tabs.get(index).getOperations().watermark(JDeli.read(new File(filename[0])), (Watermark.WatermarkPosition) imPos.getSelectedItem(), alphaHashMap.get(imAlpha.getSelectedItem()));
                 } catch (final Exception ex) {
                     JOptionPane.showMessageDialog(popup, "Cannot read image file");
                 }
             }
-            draw();
+            draw(tabs.get(imageTabs.getSelectedIndex()));
         });
         popup.add(applyWatermark);
         watermarkFrame.add(popup, BorderLayout.PAGE_START);
@@ -1309,28 +1131,30 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     }
 
     private void reset() {
-        operations = new ImageProcessingOperations();
-        zoom = scale;
-        if (cropLabel != null) {
-            imageLabel.remove(cropLabel);
+        final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+        tab.setOperations(new ImageProcessingOperations());
+        tab.setZoom(scale);
+        if (tab.getCroppingLabel() != null) {
+            tab.getImageLabel().remove(tab.getCroppingLabel());
         }
-        if (clippingLabel != null) {
-            imageLabel.remove(clippingLabel);
+        if (tab.getClippingLabel() != null) {
+            tab.getImageLabel().remove(tab.getClippingLabel());
         }
         zoomCombo.setSelectedIndex(0);
-        if (tmp != null) {
+        if (tab.getTmp() != null) {
             try {
-                Files.delete(tmp.toPath());
+                Files.delete(tab.getTmp().toPath());
             } catch (final IOException e) {
                 throw new RuntimeException(e);
             }
-            tmp = null;
+            tab.setTmp(null);
         }
         info = null;
     }
 
     @Override
-    protected void saveFile() {
+    protected void saveFile(final ImageTab tab) {
+        draw(tab);
         final JFileChooser fileChooser = new JFileChooser();
         Arrays.stream(OutputFormat.values()).forEach(x -> fileChooser.addChoosableFileFilter(new FileNameExtensionFilter(x.name(), x.name())));
         fileChooser.setFileHidingEnabled(true);
@@ -1347,4 +1171,32 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
 
         }
     }
+
+    @Override
+    protected void saveFiles() {
+        final JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        Arrays.stream(OutputFormat.values()).forEach(x -> fileChooser.addChoosableFileFilter(new FileNameExtensionFilter(x.name(), x.name())));
+        fileChooser.setFileHidingEnabled(true);
+        fileChooser.setAcceptAllFileFilterUsed(false);
+        fileChooser.showSaveDialog(this);
+        final File folder = fileChooser.getSelectedFile();
+        if (!folder.getName().isEmpty() && !folder.exists()) {
+                folder.mkdir();
+        }
+        try {
+            for (final ImageTab tab : tabs) {
+                draw(tab);
+                if (fileChooser.getSelectedFile() != null) {
+                    final String format = fileChooser.getFileFilter().getDescription();
+                    final String name = tab.getFile().getName();
+                    JDeli.write(image, format, new File(fileChooser.getSelectedFile() + File.separator + name.substring(0, name.indexOf('.')) + '.' + format));
+                }
+            }
+            JOptionPane.showMessageDialog(this, "Files saved");
+        } catch (final Exception e) {
+                JOptionPane.showMessageDialog(this, "Cannot save files");
+
+            }
+        }
 }
