@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997-2025 IDRsolutions (https://www.idrsolutions.com)
+ * Copyright (c) 1997-2026 IDRsolutions (https://www.idrsolutions.com)
  */
 
 package com.idrsolutions.image.viewer;
@@ -7,6 +7,7 @@ package com.idrsolutions.image.viewer;
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
@@ -15,11 +16,25 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.UIManager;
 import javax.swing.border.EmptyBorder;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Cursor;
+import java.awt.Desktop;
+import java.awt.Dimension;
+import java.awt.FileDialog;
+import java.awt.Font;
+import java.awt.Frame;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
@@ -32,11 +47,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
+import java.util.Objects;
 import java.util.Properties;
 
 abstract class JavaImageViewer extends JFrame implements ActionListener {
 
-    JLabel imageLabel;
+    JTabbedPane imageTabs;
     private JMenuItem docProperties;
     private JMenuItem open;
     private JMenuItem close;
@@ -55,7 +72,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
 
 
 
-    File file;
+    ArrayList<ImageTab> tabs;
     private static final String VERSION;
 
     static {
@@ -77,11 +94,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
 
         final String versionSet = props.getProperty("release");
 
-        if (versionSet != null) {
-            VERSION = versionSet;
-        } else {
-            VERSION = "@VERSION@";
-        }
+        VERSION = Objects.requireNonNullElse(versionSet, "@VERSION@");
     }
 
     JavaImageViewer(final String title) {
@@ -107,15 +120,12 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         final JPanel window = new JPanel();
         windowWidth = frameWidth - 20;
         windowHeight = frameHeight - 100;
+        final JDeliTransferHandler transferHandler = new JDeliTransferHandler(this);
+        window.setTransferHandler(transferHandler);
+        imageTabs = new JTabbedPane(SwingConstants.TOP);
+        imageTabs.setTabLayoutPolicy(JTabbedPane.WRAP_TAB_LAYOUT);
 
-        imageLabel = new JLabel();
-        imageLabel.setBounds(10, 10, 500, 500);
-        imageLabel.setHorizontalAlignment(SwingConstants.CENTER);
-        imageLabel.setVerticalAlignment(SwingConstants.CENTER);
 
-        final JScrollPane scrollPane = new JScrollPane(imageLabel);
-
-        scrollPane.setSize(600, 600);
         toolBar.setBounds(0, 0, 400, 20);
         final JMenu fileMenu = getMenu("File");
         final JMenu helpMenu = getMenu("Help");
@@ -159,7 +169,8 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         helpMenu.add(openTutorials);
 
         window.setLayout(new BorderLayout());
-        window.add(scrollPane, BorderLayout.CENTER);
+        window.add(imageTabs, BorderLayout.CENTER);
+        tabs = new ArrayList<>();
     }
 
     private static JMenu getMenu(final String name) {
@@ -178,11 +189,12 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         fileChooser.setFilenameFilter((File f, String name) -> isImageFormatSupported(name.substring(name.lastIndexOf('.') + 1)));
         fileChooser.setVisible(true);
         if (fileChooser.getDirectory() != null && fileChooser.getFile() != null) {
-            file = new File(fileChooser.getDirectory() + fileChooser.getFile());
+            tabs.add(new ImageTab(new File(fileChooser.getDirectory() + fileChooser.getFile()), new JLabel(), null));
         }
     }
 
-    private boolean canConvert() {
+    boolean canConvert(final ImageTab tab) {
+        final File file = tab.getFile();
         if (file == null) {
             JOptionPane.showMessageDialog(this, "No File Selected");
             return false;
@@ -195,7 +207,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
             JOptionPane.showMessageDialog(this, "File selected is not a valid file: " + file);
             return false;
         }
-        final String ext = getExtension();
+        final String ext = getExtension(tab);
         if (!isImageFormatSupported(ext)) {
             JOptionPane.showMessageDialog(this, ext + " is not a supported image format");
             return false;
@@ -203,35 +215,61 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         return true;
     }
 
-    String getExtension() {
-        final String fileName = file.getName();
-        final int index = fileName.lastIndexOf('.') + 1;
-        return fileName.substring(index).toLowerCase();
+    static String getExtension(final ImageTab tab) {
+        final String fileName = tab.getFile().getName();
+        final int exIndex = fileName.lastIndexOf('.') + 1;
+        return fileName.substring(exIndex).toLowerCase();
     }
 
     void setAndDisplayFile(final File file) {
-        this.file = file;
-        if (canConvert()) {
-            displayImage();
+        final ImageTab tab = new ImageTab(file, new JLabel(), null);
+        tabs.add(tab);
+        if (canConvert(tab)) {
+            displayImage(tab);
         }
     }
 
-    abstract BufferedImage getImage();
+    abstract BufferedImage getImage(ImageTab tab);
 
-    abstract Rectangle getImageDimension();
+    abstract Rectangle getImageDimension(ImageTab tab);
 
-    abstract String getImageType();
+    abstract String getImageType(ImageTab tab);
 
-    abstract void saveFile();
+    abstract void saveFile(ImageTab tab);
+
+    abstract void saveFiles();
 
     abstract boolean isImageFormatSupported(final String format);
 
-    void displayImage() {
-        draw();
+    void displayImage(final ImageTab tab) {
+        final JLabel imageLabel = tab.getImageLabel();
+        final JPanel tabPanel = new JPanel();
+        final JScrollPane scrollPane = new JScrollPane(imageLabel);
+        scrollPane.setSize(600, 600);
+        final JButton close = new JButton(new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/viewer/cross.png"))));
+        close.setBorderPainted(false);
+        final JLabel tabLabel = new JLabel(tab.getFile().getName());
+        tabPanel.setBackground(Color.white);
+        tabPanel.setBounds(new Rectangle(tabLabel.getWidth() + 2, tabLabel.getHeight() + 2));
+        tabPanel.add(tabLabel);
+        tabPanel.add(close);
+        tabPanel.setLayout(new BoxLayout(tabPanel, BoxLayout.X_AXIS));
+        imageTabs.add(scrollPane);
+        imageTabs.setTabComponentAt(tabs.size() - 1, tabPanel);
+        close.addActionListener(e -> {
+            final int i = imageTabs.indexOfTabComponent(tabPanel);
+            final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Image?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
+            if (saveOnClose == JOptionPane.YES_OPTION) {
+                saveFile(tab);
+            }
+            imageTabs.remove(i);
+            tabs.remove(i);
+        });
+        draw(tab);
     }
 
-    private void displayProperties() {
-        if (!canConvert()) {
+    private void displayProperties(final ImageTab tab) {
+        if (!canConvert(tab)) {
             return;
         }
 
@@ -253,10 +291,10 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         propertiesPanel.setLayout(new GridLayout(3, 0));
 
 
-        final Rectangle dimension = getImageDimension();
+        final Rectangle dimension = getImageDimension(tab);
         final int h = dimension.height;
         final int w = dimension.width;
-        final String type = getImageType();
+        final String type = getImageType(tab);
 
         final JLabel widthData = new JLabel("Width: " + w);
         final JLabel heightData = new JLabel("Height: " + h);
@@ -272,10 +310,10 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
     }
 
     private void close() {
-        if (file != null) {
-            final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Image?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
+        if (tabs != null && !tabs.isEmpty()) {
+            final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Images?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
             if (saveOnClose == JOptionPane.YES_OPTION) {
-                saveFile();
+                saveFiles();
             }
         }
         dispose();
@@ -306,6 +344,12 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         title.setFont(new Font("SansSerif", Font.BOLD, 14));
         title.setHorizontalAlignment(SwingConstants.CENTER);
         title.setForeground(Color.WHITE);
+
+        ImageIcon logo = new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/jdeliLogo.png")));
+        logo = new ImageIcon(logo.getImage().getScaledInstance(logo.getIconWidth() / 2, logo.getIconHeight() / 2, Image.SCALE_FAST));
+        final JLabel idrLogo = new JLabel(logo);
+        idrLogo.setVerticalAlignment(SwingConstants.BOTTOM);
+        idrLogo.setPreferredSize(new Dimension(150, 105));
 
         final JLabel versionsHeaderLabel = new JLabel(" -Version- ");
         versionsHeaderLabel.setFont(new Font("SansSerif", Font.BOLD, 14));
@@ -369,6 +413,11 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         constraints.gridx = 0;
         constraints.gridy = 0;
         aboutPanel.add(title, constraints);
+        constraints.gridwidth = 1;
+        constraints.gridx = 0;
+        constraints.gridy = 1;
+        constraints.gridheight = 3;
+        aboutPanel.add(idrLogo, constraints);
         constraints.gridheight = 1;
         constraints.gridx = 1;
         constraints.gridy = 1;
@@ -400,18 +449,17 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         }
     }
 
-    void draw() {
-        final BufferedImage original = getImage();
+    void draw(final ImageTab tab) {
+        final BufferedImage original = getImage(tab);
         if (original == null) {
             return;
         }
-
         final double zoomAmount = calculateFitToScreen(original.getWidth(), original.getHeight());
 
         final double zoomWidth = original.getWidth() * zoomAmount;
         final double zoomHeight = original.getHeight() * zoomAmount;
 
-        imageLabel.setIcon(new ImageIcon(original.getScaledInstance((int)zoomWidth, (int)zoomHeight, Image.SCALE_SMOOTH)));
+        tab.getImageLabel().setIcon(new ImageIcon(original.getScaledInstance((int)zoomWidth, (int)zoomHeight, Image.SCALE_SMOOTH)));
     }
 
     static float calculateFitToScreen(final int imageWidth, final int imageHeight) {
@@ -427,8 +475,9 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         if (e.getSource() == open) {
             try {
                 selectFile();
-                if (canConvert()) {
-                    displayImage();
+                final ImageTab tab = tabs.get(tabs.size() - 1);
+                if (canConvert(tab)) {
+                    displayImage(tab);
                 }
             } catch (final Exception exception) {
                 System.err.println("Failed to open file: " + exception.getMessage());
@@ -437,7 +486,8 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
 
         if (e.getSource() == docProperties) {
             try {
-                displayProperties();
+                final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+                displayProperties(tab);
             } catch (final Exception exception) {
                 System.err.println("Failed to gather file properties: " + exception.getMessage());
             }
@@ -451,8 +501,11 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
             displayAbout();
         }
 
-        if (e.getSource() == save && canConvert()) {
-            saveFile();
+        if (e.getSource() == save) {
+            final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
+            if (canConvert(tab)) {
+                saveFile(tab);
+            }
         }
 
         if (e.getSource() == visitWebsite) {
@@ -460,7 +513,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         }
 
         if (e.getSource() == openTutorials) {
-            openWebsite("https://support.idrsolutions.com/jdeli/");
+            openWebsite("https://www.idrsolutions.com/docs/jdeli/");
         }
     }
 }

@@ -1,15 +1,20 @@
 /*
- * Copyright (c) 1997-2025 IDRsolutions (https://www.idrsolutions.com)
+ * Copyright (c) 1997-2026 IDRsolutions (https://www.idrsolutions.com)
  */
 
 package com.idrsolutions.image.viewer;
 
+import com.idrsolutions.image.JDeli;
+import com.idrsolutions.image.encoder.OutputFormat;
+import org.jpedal.utils.LogWriter;
+
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
-import javax.swing.*;
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
 import javax.swing.filechooser.FileNameExtensionFilter;
-import java.awt.*;
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -35,19 +40,19 @@ final class ImageIOImageViewer extends JavaImageViewer {
     }
 
     @Override
-    BufferedImage getImage() {
+    BufferedImage getImage(final ImageTab tab) {
         try {
-            return ImageIO.read(file);
+            return ImageIO.read(tab.getFile());
         } catch (final IOException e) {
-            System.err.println(e);
+            LogWriter.error(e, "Exception thrown whilst loading image file");
         }
         return null;
     }
 
     @Override
-    Rectangle getImageDimension() {
+    Rectangle getImageDimension(final ImageTab tab) {
         try {
-            final ImageInputStream iis = ImageIO.createImageInputStream(file);
+            final ImageInputStream iis = ImageIO.createImageInputStream(tab.getFile());
             final Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
 
             if (readers.hasNext()) {
@@ -58,15 +63,15 @@ final class ImageIOImageViewer extends JavaImageViewer {
             }
 
         } catch (final IOException e) {
-            System.err.println("Unable to get image dimensions: " + e);
+            LogWriter.writeLog("Unable to get image dimensions: " + e);
         }
         return new Rectangle(0, 0);
     }
 
     @Override
-    String getImageType() {
+    String getImageType(final ImageTab tab) {
         try {
-            final ImageInputStream iis = ImageIO.createImageInputStream(file);
+            final ImageInputStream iis = ImageIO.createImageInputStream(tab.getFile());
             final Iterator<ImageReader> readers = ImageIO.getImageReaders(iis);
 
             if (readers.hasNext()) {
@@ -77,7 +82,7 @@ final class ImageIOImageViewer extends JavaImageViewer {
             }
 
         } catch (final IOException e) {
-            System.err.println("Unable to get image type: " + e);
+            LogWriter.writeLog("Unable to get image type: " + e);
         }
         return null;
     }
@@ -95,8 +100,8 @@ final class ImageIOImageViewer extends JavaImageViewer {
 
     @Override
     @SuppressWarnings("PMD.UnnecessaryCaseChange")
-    void saveFile() {
-        final BufferedImage image = getImage();
+    void saveFile(final ImageTab tab) {
+        final BufferedImage image = getImage(tab);
         if (image != null) {
             final JFileChooser fileChooser = new JFileChooser();
             Arrays.stream(ImageIO.getWriterFormatNames()).forEach(a -> {
@@ -119,6 +124,37 @@ final class ImageIOImageViewer extends JavaImageViewer {
             }
         } else {
             JOptionPane.showMessageDialog(this, "Cannot save file");
+        }
+    }
+
+    @Override
+    void saveFiles() {
+        final BufferedImage image = getImage(tabs.get(imageTabs.getSelectedIndex()));
+        if (image != null) {
+            final JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+            Arrays.stream(OutputFormat.values()).forEach(x -> fileChooser.addChoosableFileFilter(new FileNameExtensionFilter(x.name(), x.name())));
+            fileChooser.setFileHidingEnabled(true);
+            fileChooser.setAcceptAllFileFilterUsed(false);
+            fileChooser.showSaveDialog(this);
+            final File folder = fileChooser.getSelectedFile();
+            if (!folder.getName().isEmpty() && !folder.exists()) {
+                folder.mkdir();
+            }
+            try {
+                for (final ImageTab tab : tabs) {
+                    draw(tab);
+                    if (fileChooser.getSelectedFile() != null) {
+                        final String format = fileChooser.getFileFilter().getDescription();
+                        final String name = tab.getFile().getName();
+                        JDeli.write(image, format, new File(fileChooser.getSelectedFile() + File.separator + name.substring(0, name.indexOf('.')) + '.' + format));
+                    }
+                }
+                JOptionPane.showMessageDialog(this, "Files saved");
+            } catch (final Exception e) {
+                JOptionPane.showMessageDialog(this, "Cannot save files");
+
+            }
         }
     }
 }
