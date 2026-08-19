@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997-2025 IDRsolutions (https://www.idrsolutions.com)
+ * Copyright (c) 1997-2026 IDRsolutions (https://www.idrsolutions.com)
  */
 
 package com.idrsolutions.image.viewer;

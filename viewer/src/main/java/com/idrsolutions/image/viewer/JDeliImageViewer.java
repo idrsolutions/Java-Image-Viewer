@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997-2025 IDRsolutions (https://www.idrsolutions.com)
+ * Copyright (c) 1997-2026 IDRsolutions (https://www.idrsolutions.com)
  */
 
 package com.idrsolutions.image.viewer;
@@ -15,8 +15,6 @@ import com.idrsolutions.image.process.ImageProcessingOperations;
 import com.idrsolutions.image.process.MirrorOperations;
 import com.idrsolutions.image.process.Watermark;
 import com.idrsolutions.image.tiff.TiffDecoder;
-import javax.swing.JSpinner;
-import javax.swing.SpinnerNumberModel;
 import org.jpedal.utils.LogWriter;
 
 import javax.imageio.stream.FileImageInputStream;
@@ -33,9 +31,11 @@ import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
 import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.SpinnerNumberModel;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
@@ -114,10 +114,10 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         final File file = tab.getFile();
         final File tmp = tab.getTmp();
         try {
-        if (isMulti) {
-            final TiffDecoder tiff = new TiffDecoder();
-            return tiff.readImageAt(currIm, file);
-        }
+            if (isMulti) {
+                final TiffDecoder tiff = new TiffDecoder();
+                return tiff.readImageAt(currIm, file);
+            }
             return tmp == null ? JDeli.read(file) : JDeli.read(tmp);
         } catch (final Exception e) {
             LogWriter.writeLog("Unable to read file: " + e.getMessage());
@@ -177,7 +177,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             final int i = imageTabs.indexOfTabComponent(tabPanel);
             final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Image?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
             if (saveOnClose == JOptionPane.YES_OPTION) {
-                    saveFile(tab);
+                saveFile(tab);
             }
             imageTabs.remove(i);
             tabs.remove(i);
@@ -189,7 +189,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                 imageCount = tiff.getImageCount(tab.getFile());
                 isMulti = imageCount > 1;
                 if (isMulti) {
-                   setUpMulti(tab);
+                    setUpMulti(tab);
                 }
             }
         } catch (final IOException e) {
@@ -425,7 +425,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         } else if (source == rotateAntiClockwise) {
             actonRotateAntiClockwise();
         } else if (source == undo) {
-           actionUndo();
+            actionUndo();
             draw(tabs.get(index));
         } else if (source == redo) {
             actionRedo();
@@ -597,8 +597,8 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         }
         clippingLabel.setBounds(topX, topY, (image.getWidth()), (image.getHeight()));
         getCurrentImageLabel().add(clippingLabel);
-         tab.setClipOpIndex(5);
-         final int cropOpIndex = tab.getCropOpIndex();
+        tab.setClipOpIndex(5);
+        final int cropOpIndex = tab.getCropOpIndex();
         tab.setCropOpIndex(cropOpIndex == 5 ? cropOpIndex + 1 : cropOpIndex);
     }
 
@@ -665,7 +665,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                     zoomCombo.setSelectedIndex(zoomCombo.getSelectedIndex() - 1);
                 }
                 tab.setZoomIndex(selectedIndex);
-            } else if (selectedIndex > 3 && selectedIndex < zoomCombo.getItemCount() - 3) {
+            } else if (selectedIndex > 3 && selectedIndex < zoomCombo.getItemCount()) {
                 zoomCombo.setSelectedIndex(selectedIndex - 1);
                 tab.setZoom(parseZoomCombo());
             }
@@ -689,7 +689,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
                     if ((s / 100) < scale) {
                         zoomCombo.setSelectedIndex(zoomCombo.getSelectedIndex() + 1);
                     }
-                    tab.setZoomIndex(selectedIndex);
+                    tab.setZoomIndex(zoomCombo.getSelectedIndex());
                 } else {
                     zoomCombo.setSelectedIndex(selectedIndex + 1);
                     tab.setZoom(parseZoomCombo());
@@ -812,60 +812,60 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
     }
 
     void showImageInfo(final ImageTab tab) {
-            info = new JFrame("Image Info");
-            final JPanel infoPanel = new JPanel();
-            infoPanel.setLayout(new GridLayout(22, 2, 1, 1));
-            Exif exif = null;
-            try (FileImageInputStream fios = new FileImageInputStream(tab.getTmp() == null ? tab.getFile() : tab.getTmp())) {
-                final byte[] data = new byte[(int) fios.length()];
-                fios.read(data);
-                if (tab.getMetadata() == null) {
-                    tab.setMetadata(JDeli.getImageInfo(data));
-                }
-                metadata = tab.getMetadata();
-
-                final TreeMap<String, String> metadataMap = (TreeMap<String, String>) metadata.toMap();
-                if (getImageType(tab).equals(ImageFormat.HEIC_IMAGE.toString())) {
-                    final HeicDecoder hdec = new HeicDecoder();
-                    exif = hdec.readExif(data);
-                } else if (getImageType(tab).equals(ImageFormat.JPEG_IMAGE.toString())) {
-                    if (data[0] == 'E' && data[1] == 'x' && data[2] == 'i' && data[3] == 'f') {
-                        final byte[] edata = new byte[data.length - 6];
-                        System.arraycopy(data, 6, edata, 0, edata.length);
-                        exif = Exif.readExif(edata);
-                    }
-                } else if (getImageType(tab).equals(ImageFormat.TIFF_IMAGE.toString())) {
-                    exif = Exif.readExif(data);
-                }
-                    if (exif != null && !exif.getIfdDataList().isEmpty()) {
-                        final List<IFDData> exifList = exif.getIfdDataList();
-                        String remainingexif = exifList.get(0).toString();
-                        int p = 0;
-                        while (p < remainingexif.length() && remainingexif.contains("\n")) {
-                            if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
-                                metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
-                            }
-                            p = remainingexif.indexOf('\n') + 1;
-                            remainingexif = remainingexif.substring(p);
-
-                        }
-                    }
-
-                    metadataMap.forEach((k, v) -> {
-                        final JTextField text = new JTextField("   " + k + " : " + v);
-                        text.setEditable(false);
-                        infoPanel.add(text);
-                    });
-
-            } catch (final Exception e) {
-                throw new RuntimeException(e);
+        info = new JFrame("Image Info");
+        final JPanel infoPanel = new JPanel();
+        infoPanel.setLayout(new GridLayout(22, 2, 1, 1));
+        Exif exif = null;
+        try (FileImageInputStream fios = new FileImageInputStream(tab.getTmp() == null ? tab.getFile() : tab.getTmp())) {
+            final byte[] data = new byte[(int) fios.length()];
+            fios.read(data);
+            if (tab.getMetadata() == null) {
+                tab.setMetadata(JDeli.getImageInfo(data));
             }
-            infoPanel.setSize(400, 500);
-            info.add(infoPanel);
-            info.setLocation(300, 250);
-            info.setSize(450, 500);
+            metadata = tab.getMetadata();
 
-            info.setVisible(true);
+            final TreeMap<String, String> metadataMap = (TreeMap<String, String>) metadata.toMap();
+            if (getImageType(tab).equals(ImageFormat.HEIC_IMAGE.toString())) {
+                final HeicDecoder hdec = new HeicDecoder();
+                exif = hdec.readExif(data);
+            } else if (getImageType(tab).equals(ImageFormat.JPEG_IMAGE.toString())) {
+                if (data[0] == 'E' && data[1] == 'x' && data[2] == 'i' && data[3] == 'f') {
+                    final byte[] edata = new byte[data.length - 6];
+                    System.arraycopy(data, 6, edata, 0, edata.length);
+                    exif = Exif.readExif(edata);
+                }
+            } else if (getImageType(tab).equals(ImageFormat.TIFF_IMAGE.toString())) {
+                exif = Exif.readExif(data);
+            }
+            if (exif != null && !exif.getIfdDataList().isEmpty()) {
+                final List<IFDData> exifList = exif.getIfdDataList();
+                String remainingexif = exifList.get(0).toString();
+                int p = 0;
+                while (p < remainingexif.length() && remainingexif.contains("\n")) {
+                    if (!remainingexif.startsWith("imageHeight") && !remainingexif.startsWith("imageWidth")) {
+                        metadataMap.put(remainingexif.substring(0, remainingexif.indexOf(':') + 1), remainingexif.substring(remainingexif.indexOf(':') + 1, remainingexif.indexOf('\n')));
+                    }
+                    p = remainingexif.indexOf('\n') + 1;
+                    remainingexif = remainingexif.substring(p);
+
+                }
+            }
+
+            metadataMap.forEach((k, v) -> {
+                final JTextField text = new JTextField("   " + k + " : " + v);
+                text.setEditable(false);
+                infoPanel.add(text);
+            });
+
+        } catch (final Exception e) {
+            throw new RuntimeException(e);
+        }
+        infoPanel.setSize(400, 500);
+        info.add(infoPanel);
+        info.setLocation(300, 250);
+        info.setSize(450, 500);
+
+        info.setVisible(true);
     }
 
     @SuppressWarnings({"OverlyLongMethod", "ConstantConditions", "java:S138"})
@@ -1182,7 +1182,7 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
         fileChooser.showSaveDialog(this);
         final File folder = fileChooser.getSelectedFile();
         if (!folder.getName().isEmpty() && !folder.exists()) {
-                folder.mkdir();
+            folder.mkdir();
         }
         try {
             for (final ImageTab tab : tabs) {
@@ -1195,8 +1195,8 @@ public final class JDeliImageViewer extends JavaImageViewer implements ItemListe
             }
             JOptionPane.showMessageDialog(this, "Files saved");
         } catch (final Exception e) {
-                JOptionPane.showMessageDialog(this, "Cannot save files");
+            JOptionPane.showMessageDialog(this, "Cannot save files");
 
-            }
         }
+    }
 }

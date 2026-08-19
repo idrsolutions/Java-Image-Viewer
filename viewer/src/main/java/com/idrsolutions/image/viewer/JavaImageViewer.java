@@ -1,19 +1,13 @@
 /*
- * Copyright (c) 1997-2025 IDRsolutions (https://www.idrsolutions.com)
+ * Copyright (c) 1997-2026 IDRsolutions (https://www.idrsolutions.com)
  */
 
 package com.idrsolutions.image.viewer;
 
-import com.idrsolutions.image.JDeli;
-import com.idrsolutions.image.JDeliImage;
-import java.util.ArrayList;
-import javax.swing.JButton;
-import javax.swing.JTabbedPane;
-import org.jpedal.utils.LogWriter;
-
 import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JMenu;
@@ -22,6 +16,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.UIManager;
@@ -52,6 +47,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -89,11 +85,11 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
                 try {
                     props.load(is);
                 } catch (final IOException ex) {
-                    LogWriter.writeLog("Exception: " + ex.getMessage());
+                    System.err.println("Exception: " + ex.getMessage());
                 }
             }
         } catch (final IOException e) {
-            LogWriter.writeLog("Exception: " + e.getMessage());
+            System.err.println("Exception: " + e.getMessage());
         }
 
         final String versionSet = props.getProperty("release");
@@ -102,13 +98,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
     }
 
     JavaImageViewer(final String title) {
-        final String viewerTtl = title + "   -   Version: " + VERSION;
-        final int bb = JDeliImage.bb;
-        if (bb != -5) {
-            viewerTitle = bb + " days left   -   " + viewerTtl;
-        } else {
-            viewerTitle = viewerTtl;
-        }
+        viewerTitle = title + "   -   Version: " + VERSION;
         setPreferredSize(new Dimension(frameWidth, frameHeight));
     }
 
@@ -323,7 +313,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         if (tabs != null && !tabs.isEmpty()) {
             final int saveOnClose = JOptionPane.showOptionDialog(this, "Save Images?", "Save", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE, null, null, null);
             if (saveOnClose == JOptionPane.YES_OPTION) {
-                    saveFiles();
+                saveFiles();
             }
         }
         dispose();
@@ -355,7 +345,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         title.setHorizontalAlignment(SwingConstants.CENTER);
         title.setForeground(Color.WHITE);
 
-        ImageIcon logo = new ImageIcon(Objects.requireNonNull(JDeli.class.getResource("/com/idrsolutions/image/res/jdeliLogo.png")));
+        ImageIcon logo = new ImageIcon(Objects.requireNonNull(getClass().getResource("/jdeli/jdeliLogo.png")));
         logo = new ImageIcon(logo.getImage().getScaledInstance(logo.getIconWidth() / 2, logo.getIconHeight() / 2, Image.SCALE_FAST));
         final JLabel idrLogo = new JLabel(logo);
         idrLogo.setVerticalAlignment(SwingConstants.BOTTOM);
@@ -409,7 +399,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
                 try {
                     java.awt.Desktop.getDesktop().browse(new URI("https://www.idrsolutions.com/jdeli/"));
                 } catch (final Exception e1) {
-                    LogWriter.writeLog("Exception attempting launch browser: " + e1);
+                    System.err.println("Exception attempting launch browser: " + e1);
                 }
             }
         });
@@ -455,7 +445,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         try {
             Desktop.getDesktop().browse(new URI(url));
         } catch (final IOException | URISyntaxException e) {
-            LogWriter.writeLog("Failed to open website: " + e.getMessage());
+            System.err.println("Failed to open website: " + e.getMessage());
         }
     }
 
@@ -490,7 +480,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
                     displayImage(tab);
                 }
             } catch (final Exception exception) {
-                LogWriter.writeLog("Failed to open file: " + exception.getMessage());
+                System.err.println("Failed to open file: " + exception.getMessage());
             }
         }
 
@@ -499,7 +489,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
                 final ImageTab tab = tabs.get(imageTabs.getSelectedIndex());
                 displayProperties(tab);
             } catch (final Exception exception) {
-                LogWriter.writeLog("Failed to gather file properties: " + exception.getMessage());
+                System.err.println("Failed to gather file properties: " + exception.getMessage());
             }
         }
 
@@ -523,7 +513,7 @@ abstract class JavaImageViewer extends JFrame implements ActionListener {
         }
 
         if (e.getSource() == openTutorials) {
-            openWebsite("https://support.idrsolutions.com/jdeli/");
+            openWebsite("https://www.idrsolutions.com/docs/jdeli/");
         }
     }
 }
