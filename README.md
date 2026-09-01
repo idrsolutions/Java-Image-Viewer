@@ -6,7 +6,7 @@ This is a simple Java image viewer that has 2 implementations:
   - For you to view images using Java with ImageIO
 
 - JDeli
-  - To view and process images using our software JDeli (Please note you with need JDeli to utilise this, you can get a trial [here](https://www.idrsolutions.com/jdeli/trial-download))
+  - To view and process images using our software [JDeli](https://www.idrsolutions.com/jdeli/) (Please note you with need JDeli to utilise this, you can get a trial [here](https://www.idrsolutions.com/jdeli/trial-download))
 
 ---
 
